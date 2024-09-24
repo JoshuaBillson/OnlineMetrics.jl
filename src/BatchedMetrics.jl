@@ -15,4 +15,7 @@ export MetricCollection, scores
 include("classification.jl")
 export ClassificationMetric, Accuracy, MIoU, Precision, Recall
 
+include("misc.jl")
+export AverageMeasure
+
 end
