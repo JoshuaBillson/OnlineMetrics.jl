@@ -69,7 +69,7 @@ function Base.show(io::IO, ::MIME"text/plain", x::MetricCollection)
     for (i, (name, metric)) in enumerate(x.metrics)
         printstyled(io, "$name")
         printstyled(io, "=")
-        printstyled(io, "$(compute(metric))")
+        printstyled(io, "$(_round(compute(metric), 4))")
         i < length(x.metrics) && printstyled(io, ", ")
     end
     printstyled(io, ")")
@@ -92,8 +92,8 @@ _filter_metrics(md::MetricCollection, pat::Regex) = filter(x -> contains(x, pat)
 
 reset!(md::MetricCollection) = foreach(reset!, values(md.metrics))
 
-function scores(md::MetricCollection)
-    names = keys(md.metrics) .|> Symbol |> Tuple
-    vals = map(compute, values(md.metrics))
+function compute(md::MetricCollection)
+    names = keys(md) .|> Symbol |> Tuple
+    vals = [compute(md[name]) for name in keys(md)]
     return NamedTuple{names}(vals)
 end
