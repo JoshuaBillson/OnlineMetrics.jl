@@ -57,7 +57,7 @@ function update(x::MIoU, state, ŷ::AbstractArray{<:Integer}, y::AbstractArray{
     return (intersection = state.intersection + intersection, union = state.union + union)
 end
 
-compute(x::MIoU, state) = sum((state.intersection .+ eps(Float64)) ./ (state.union .+ eps(Float64))) / length(x.nclasses)
+compute(x::MIoU, state) = sum((state.intersection .+ eps(Float64)) ./ (state.union .+ eps(Float64))) / x.nclasses
 
 """
     ConfusionMatrix(nclasses::Int)
