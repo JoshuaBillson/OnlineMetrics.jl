@@ -101,6 +101,5 @@ end
 
 function Base.show(io::IO, x::Metric)
     results = compute(x)
-    rounded = results isa AbstractArray ? round.(results, digits=4) : round(results, digits=4)
-    print(io, "$(name(x)): $rounded")
+    print(io, "$(name(x)): $(_round(results, 4))")
 end

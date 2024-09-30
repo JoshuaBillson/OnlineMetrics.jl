@@ -57,7 +57,37 @@ function update(x::MIoU, state, ŷ::AbstractArray{<:Integer}, y::AbstractArray{
     return (intersection = state.intersection + intersection, union = state.union + union)
 end
 
-compute(x::MIoU, state) = sum((state.intersection .+ eps(Float64)) ./ (state.union .+ eps(Float64))) / length(x.classes)
+compute(x::MIoU, state) = sum((state.intersection .+ eps(Float64)) ./ (state.union .+ eps(Float64))) / length(x.nclasses)
+
+"""
+    ConfusionMatrix(nclasses::Int)
+
+Calculate the confusion matrix over two or more classes. The columns of the resulting `nclasses x nclasses`
+matrix correspond to the true label while the rows correspond to the prediction.
+
+# Arguments
+- `nclasses::Int`: The number of possible classes in the classification task.
+"""
+struct ConfusionMatrix <: ClassificationMetric
+    nclasses::Int
+end
+
+name(::Type{ConfusionMatrix}) = "confusion"
+
+init(x::ConfusionMatrix) = (;confusion=zeros(Int, x.nclasses, x.nclasses))
+
+function update(x::ConfusionMatrix, state, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
+    return update(x, state, reshape(ŷ, (1,:)), reshape(y, (1,:)))
+end
+function update(x::ConfusionMatrix, state, ŷ::AbstractArray{<:Integer,4}, y::AbstractArray{<:Integer,4})
+    return update(x, state, _flatten(ŷ), _flatten(y))
+end
+function update(x::ConfusionMatrix, state, ŷ::AbstractArray{<:Integer,2}, y::AbstractArray{<:Integer,2})
+    confusion = _onehot(ŷ, _classes(x.nclasses)) * transpose(_onehot(y, _classes(x.nclasses)))
+    return (;confusion = state.confusion .+ confusion)
+end
+
+compute(::ConfusionMatrix, state) = state.confusion
 
 """
     Precision(nclasses::Int; agg=:macro)
