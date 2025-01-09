@@ -210,3 +210,21 @@ function value(x::Recall)
 end
 
 params(x::Recall) = (;x.agg, tp=x.tp, fn=x.fn)
+
+"""
+    BinaryRecall()
+
+A variant of `Recall` specialized for binary classification.
+"""
+mutable struct BinaryRecall <: ClassificationMetric
+    recall::Recall
+    BinaryPrecision() = new(Recall(2; agg=nothing))
+end
+
+function step!(x::BinaryRecall, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
+    step!(x.recall, ŷ, y)
+end
+
+params(x::BinaryRecall) = (;tp=x.recall.tp[2], fn=x.recall.fn[2])
+
+value(x::BinaryRecall) = value(x.recall)[2]
