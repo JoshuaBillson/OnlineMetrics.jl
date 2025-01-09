@@ -27,14 +27,15 @@ struct MetricCollection{M}
     MetricCollection(metrics::T) where {T <: Tuple} = new{T}(metrics)
 end
 
+function step!(x::MetricCollection, ŷ, y)
+    foreach(metric -> step!(metric, ŷ, y), x.metrics)
+end
+
+value(m::MetricCollection) = map(value, m.metrics)
 
 AbstractTrees.children(x::MetricCollection) = x.metrics
 AbstractTrees.nodevalue(::MetricCollection) = MetricCollection
 
 function Base.show(io::IO, x::MetricCollection)
     print_tree(io, x)
-end
-
-function step!(x::MetricCollection, ŷ, y)
-    foreach(metric -> step!(metric, ŷ, y), x.metrics)
 end
