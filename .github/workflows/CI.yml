@@ -73,6 +73,6 @@ jobs:
         shell: julia --project=docs --color=yes {0}
         run: |
           using Documenter: DocMeta, doctest
-          using BatchedMetrics
-          DocMeta.setdocmeta!(BatchedMetrics, :DocTestSetup, :(using BatchedMetrics); recursive=true)
-          doctest(BatchedMetrics)
+          using OnlineMetrics
+          DocMeta.setdocmeta!(OnlineMetrics, :DocTestSetup, :(using OnlineMetrics); recursive=true)
+          doctest(OnlineMetrics)

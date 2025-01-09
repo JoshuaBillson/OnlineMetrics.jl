@@ -5,13 +5,8 @@ assumes that both `ŷ` and `y` are encoded as integers.
 """
 abstract type ClassificationMetric <: AbstractMetric end
 
-function update(x::ClassificationMetric, state, ŷ::AbstractArray{<:AbstractFloat,N}, y::AbstractArray{<:Real,N}) where {N}
-    @assert size(ŷ) == size(y)
-    class_dim = max(N - 1, 1)
-    if (N == 1) || (size(ŷ, class_dim) == 1)
-        return update(x, state, round.(Int, ŷ), round.(Int, y))
-    end
-    return update(x, state, _onecold(ŷ, class_dim), _onecold(y, class_dim))
+function step!(x::ClassificationMetric, ŷ::AbstractArray{<:Real}, y::AbstractArray{<:Real})
+    return step!(x, _onecold(ŷ), _onecold(y))
 end
 
 # Accuracy
@@ -21,17 +16,22 @@ end
     
 Measures the model's overall accuracy as `correct / total`.
 """
-struct Accuracy <: ClassificationMetric end
-
-name(::Type{Accuracy}) = "accuracy"
-
-init(::Accuracy) = (correct=0, total=0)
-
-function update(::Accuracy, state, ŷ::AbstractArray{<:Integer}, y::AbstractArray{<:Integer})
-    return (correct = state.correct + sum(ŷ .== y), total = state.total + length(ŷ))
+mutable struct Accuracy <: ClassificationMetric
+    correct::Int
+    total::Int
+    Accuracy() = new(0,0)
 end
 
-compute(::Accuracy, state) = state.correct / max(state.total, 1)
+name(::Accuracy) = "accuracy"
+
+function step!(m::Accuracy, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
+    m.correct += sum(ŷ .== y)
+    m.total += length(ŷ)
+end
+
+value(m::Accuracy) = m.correct / max(m.total, 1)
+
+params(x::Accuracy) = (;n=x.total, x.correct)
 
 # MIoU
 
@@ -41,23 +41,27 @@ compute(::Accuracy, state) = state.correct / max(state.total, 1)
 Mean Intersection over Union (MIoU) is a measure of the overlap between a prediction and a label.
 This measure is frequently used for segmentation models.
 """
-struct MIoU <: ClassificationMetric
+mutable struct MIoU <: ClassificationMetric
     nclasses::Int
+    intersection::Vector{Int}
+    union::Vector{Int}
 end
 
-MIoU(x::AbstractVector) = MIoU(vec(x))
-
-name(::Type{MIoU}) = "MIoU"
-
-init(x::MIoU) = (intersection=zeros(Int, x.nclasses), union=zeros(Int, x.nclasses))
-
-function update(x::MIoU, state, ŷ::AbstractArray{<:Integer}, y::AbstractArray{<:Integer})
-    intersection = [sum((ŷ .== cls) .&& (y .== cls)) for cls in _classes(x.nclasses)]
-    union = [sum((ŷ .== cls) .|| (y .== cls)) for cls in _classes(x.nclasses)]
-    return (intersection = state.intersection + intersection, union = state.union + union)
+function MIoU(nclasses::Int)
+    @argcheck nclasses >= 1
+    return MIoU(nclasses, zeros(Int, nclasses), zeros(Int, nclasses))
 end
 
-compute(x::MIoU, state) = sum((state.intersection .+ eps(Float64)) ./ (state.union .+ eps(Float64))) / x.nclasses
+name(::MIoU) = "MIoU"
+
+function step!(x::MIoU, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
+    x.intersection += [sum((ŷ .== cls) .&& (y .== cls)) for cls in 0:x.nclasses-1]
+    x.union += [sum((ŷ .== cls) .|| (y .== cls)) for cls in 0:x.nclasses-1]
+end
+
+value(x::MIoU) = round(sum((x.intersection .+ eps(Float64)) ./ (x.union .+ eps(Float64))) / x.nclasses, digits=15)
+
+params(x::MIoU) = (;union=x.union, intersection=x.intersection)
 
 """
     ConfusionMatrix(nclasses::Int)
@@ -68,26 +72,35 @@ matrix correspond to the true label while the rows correspond to the prediction.
 # Arguments
 - `nclasses::Int`: The number of possible classes in the classification task.
 """
-struct ConfusionMatrix <: ClassificationMetric
+mutable struct ConfusionMatrix <: ClassificationMetric
     nclasses::Int
+    confusion::Matrix{Int}
 end
 
-name(::Type{ConfusionMatrix}) = "confusion"
-
-init(x::ConfusionMatrix) = (;confusion=zeros(Int, x.nclasses, x.nclasses))
-
-function update(x::ConfusionMatrix, state, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
-    return update(x, state, reshape(ŷ, (1,:)), reshape(y, (1,:)))
-end
-function update(x::ConfusionMatrix, state, ŷ::AbstractArray{<:Integer,4}, y::AbstractArray{<:Integer,4})
-    return update(x, state, _flatten(ŷ), _flatten(y))
-end
-function update(x::ConfusionMatrix, state, ŷ::AbstractArray{<:Integer,2}, y::AbstractArray{<:Integer,2})
-    confusion = _onehot(ŷ, _classes(x.nclasses)) * transpose(_onehot(y, _classes(x.nclasses)))
-    return (;confusion = state.confusion .+ confusion)
+function ConfusionMatrix(nclasses::Int)
+    @argcheck nclasses > 0
+    return ConfusionMatrix(nclasses, zeros(Int, nclasses, nclasses))
 end
 
-compute(::ConfusionMatrix, state) = state.confusion
+name(::ConfusionMatrix) = "confusion"
+
+function params(x::ConfusionMatrix)
+    tp, tn, fp, fn = _tfpn(x.confusion)
+    return (;tp, tn, fp, fn)
+end
+
+function step!(x::ConfusionMatrix, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
+    return step!(x, reshape(ŷ, (1,:)), reshape(y, (1,:)))
+end
+function step!(x::ConfusionMatrix, ŷ::AbstractArray{<:Integer,4}, y::AbstractArray{<:Integer,4})
+    return step!(x,  _flatten(ŷ), _flatten(y))
+end
+function step!(x::ConfusionMatrix, ŷ::AbstractArray{<:Integer,2}, y::AbstractArray{<:Integer,2})
+    classes = collect(0:x.nclasses-1)
+    x.confusion .+= _onehot(ŷ, classes) * transpose(_onehot(y, classes))
+end
+
+value(x::ConfusionMatrix) = 0#x.confusion
 
 """
     Precision(nclasses::Int; agg=:macro)
@@ -103,30 +116,36 @@ Precision is the ratio of true positives to the sum of true positives and false 
   - `:micro`: Calculates micro-averaged precision, which aggregates the contributions of all classes to compute a single precision value.
   - `:nothing`: Calculates the per-class precision, which is returned as a `Vector` with the same length as `classes`.
 """
-struct Precision <: ClassificationMetric
+mutable struct Precision <: ClassificationMetric
     agg::Symbol
     nclasses::Int
+    tp::Vector{Int}
+    fp::Vector{Int}
 end
 
-Precision(nclasses::Int; agg=:macro) = Precision(agg, nclasses)
-
-name(::Type{Precision}) = "precision"
-
-init(x::Precision) = (tp=zeros(Int, x.nclasses), fp=zeros(Int, x.nclasses))
-
-function update(x::Precision, state, ŷ::AbstractArray{<:Integer}, y::AbstractArray{<:Integer})
-    TP = [_tp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
-    FP = [_fp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
-    return (tp = state.tp + TP, fp = state.fp + FP)
+function Precision(nclasses::Int; agg=:macro)
+    @argcheck nclasses > 0
+    @argcheck agg in (:macro, :micro, nothing)
+    Precision(Symbol(agg), nclasses, zeros(Int, nclasses), zeros(Int, nclasses))
 end
 
-function compute(x::Precision, state)
-    TP, FP = state
-    @match x.agg begin
-        :macro => mean(TP ./ (TP .+ FP .+ eps(Float64)))
-        :micro => mean(TP) / (mean(TP) + mean(FP) + eps(Float64))
-        :nothing => TP ./ (TP .+ FP .+ eps(Float64))
+name(::Precision) = "precision"
+
+params(x::Precision) = (;x.agg, tp=x.tp, fp=x.fp)
+
+function step!(x::Precision, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
+    x.tp .+= [_tp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
+    x.fp .+= [_fp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
+end
+
+function value(x::Precision)
+    ϵ = eps(Float64)
+    v = @match x.agg begin
+        :macro => mean((x.tp .+ ϵ) ./ (x.tp .+ x.fp .+ ϵ))
+        :micro => mean(x.tp .+ ϵ) / (mean(x.tp) + mean(x.fp) + ϵ)
+        :nothing => (x.tp .+ ϵ) ./ (x.tp .+ x.fp .+ ϵ)
     end
+    return round.(v, digits=15)
 end
 
 """
@@ -143,28 +162,34 @@ Recall, also known as sensitivity or true positive rate, is the ratio of true po
   - `:micro`: Calculates micro-averaged recall, which aggregates the contributions of all classes to compute a single recall value.
   - `:nothing`: Calculates the per-class recall, which is returned as a `Vector` with the same length as `classes`.
 """
-struct Recall <: ClassificationMetric
+mutable struct Recall <: ClassificationMetric
     agg::Symbol
     nclasses::Int
+    tp::Vector{Int}
+    fn::Vector{Int}
 end
 
-Recall(nclasses::Int; agg=:macro) = Recall(agg, nclasses)
-
-name(::Type{Recall}) = "recall"
-
-init(x::Recall) = (tp=zeros(Int, x.nclasses), fn=zeros(Int, x.nclasses))
-
-function update(x::Recall, state, ŷ::AbstractArray{<:Integer}, y::AbstractArray{<:Integer})
-    TP = [_tp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
-    FN = [_fn(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
-    return (tp = state.tp + TP, fn = state.fn + FN)
+function Recall(nclasses::Int; agg=:macro)
+    @argcheck nclasses > 0
+    @argcheck agg in (:macro, :micro, nothing)
+    Recall(Symbol(agg), nclasses, zeros(Int, nclasses), zeros(Int, nclasses))
 end
 
-function compute(x::Recall, state)
-    TP, FN = state
-    @match x.agg begin
-        :macro => mean(TP ./ (TP .+ FN .+ eps(Float64)))
-        :micro => mean(TP) / (mean(TP) + mean(FN) + eps(Float64))
-        :nothing => TP ./ (TP .+ FN .+ eps(Float64))
+name(::Recall) = "recall"
+
+function step!(x::Recall, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
+    x.tp .+= [_tp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
+    x.fn .+= [_fn(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
+end
+
+function value(x::Recall)
+    ϵ = eps(Float64)
+    v = @match x.agg begin
+        :macro => mean((x.tp .+ ϵ) ./ (x.tp .+ x.fn .+ ϵ))
+        :micro => mean(x.tp .+ ϵ) / (mean(x.tp) + mean(x.fn) + ϵ)
+        :nothing => (x.tp .+ ϵ) ./ (x.tp .+ x.fn .+ ϵ)
     end
+    return round.(v, digits=15)
 end
+
+params(x::Recall) = (;x.agg, tp=x.tp, fn=x.fn)

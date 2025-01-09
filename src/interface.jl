@@ -26,80 +26,36 @@ abstract type AbstractMetric end
 
 """
     name(m::AbstractMetric)
-    name(m::Metric)
 
 Human readable name of the given performance measure.
 """
-name(::M) where {M <: AbstractMetric} = name(M)
+name(::AbstractMetric)
 
 """
-    init(m::AbstractMetric)
+    step!(m::AbstractMetric, ŷ, y)
 
-Returns the initial state of the performance measure, which will be subsequently updated
-for each mini-batch of labels and predictions.
-"""
-function init end
-
-"""
-    update(m::AbstractMetric, state, ŷ, y)
-
-Return the new state for the given batch of labels and predictions.
+Update the metric state for the given batch of labels and predictions.
 """
 function update end
 
 """
-    compute(m::AbstractMetric, state)
-    compute(metric::Metric)
+    value(m::AbstractMetric)
 
-Compute the performance measure from the current state.
+Compute the performance measure from the current metric state.
 """
-function compute end
+function value end
 
-"""
-    Metric(measure::AbstractMetric)
+params(x::AbstractMetric) = (;)
 
-`Metric` objects are used to store and maintain the state for a given `AbstractMetric`.
-
-`Metrics` are compatible with the following interface:
-- `name(metric)`: Returns the human readable name of the metric.
-- `update!(metric, ŷ, y)`: Updates the metric's state for the given prediction/label pair.
-- `reset!(metric)`: Restores the metric's state to the initial value.
-- `compute(metric)`: Computes the metric's value for the current state.
-"""
-mutable struct Metric{M,T}
-    lock::ReentrantLock
-    measure::M
-    state::T
+function Base.show(io::IO, x::AbstractMetric)
+    print_tree(io, x)
 end
 
-Metric(measure::AbstractMetric) = Metric(ReentrantLock(), measure, init(measure))
-
-name(m::Metric) = name(m.measure)
-
-compute(metric::Metric) = compute(metric.measure, metric.state)
-
-"""
-    step!(metric::Metric, ŷ, y)
-
-Update the metric state for the next batch of labels and predictions.
-"""
-function step!(metric::Metric, ŷ, y)
-    Threads.lock(metric.lock) do
-        metric.state = update(metric.measure, metric.state, ŷ, y)
-    end
-    return metric
+struct NodeValue{V}
+    val::V
 end
 
-"""
-    reset!(metric::Metric)
+AbstractTrees.nodevalue(x::NodeValue) = x.val
 
-Reset the metric's state.
-"""
-function reset!(metric::Metric)
-    metric.state = init(metric.measure)
-end
-
-function Base.show(io::IO, x::Metric)
-    results = compute(x)
-    print(io, "$(name(x)): $(_round(results, 4))")
-end
+AbstractTrees.nodevalue(::T) where {T <: AbstractMetric} = T
+AbstractTrees.children(x::AbstractMetric) = map(NodeValue, (;value = value(x), params(x)...))

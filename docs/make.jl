@@ -1,14 +1,14 @@
-using BatchedMetrics
+using OnlineMetrics
 using Documenter
 
-DocMeta.setdocmeta!(BatchedMetrics, :DocTestSetup, :(using BatchedMetrics); recursive=true)
+DocMeta.setdocmeta!(OnlineMetrics, :DocTestSetup, :(using OnlineMetrics); recursive=true)
 
 makedocs(;
-    modules=[BatchedMetrics],
+    modules=[OnlineMetrics],
     authors="Joshua Billson",
-    sitename="BatchedMetrics.jl",
+    sitename="OnlineMetrics.jl",
     format=Documenter.HTML(;
-        canonical="https://JoshuaBillson.github.io/BatchedMetrics.jl",
+        canonical="https://JoshuaBillson.github.io/OnlineMetrics.jl",
         edit_link="main",
         assets=String[],
     ),
@@ -18,6 +18,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/JoshuaBillson/BatchedMetrics.jl",
+    repo="github.com/JoshuaBillson/OnlineMetrics.jl",
     devbranch="main",
 )

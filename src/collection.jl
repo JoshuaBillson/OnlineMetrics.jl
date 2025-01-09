@@ -37,63 +37,17 @@ julia> md
 MetricCollection(train_acc=0.75, val_acc=1.0)
 ```
 """
-struct MetricCollection{D<:OrderedDict}
-    metrics::D
+struct MetricCollection{M}
+    metrics::M
 end
 
-function MetricCollection(metrics...; prefix="")
-    # Preprocess Metric Names
-    metrics = @pipe map(_preprocess_metric, metrics) |> [(prefix * n) => m for (n, m) in _]
+AbstractTrees.children(x::MetricCollection) = x.metrics
+AbstractTrees.nodevalue(::MetricCollection) = MetricCollection
 
-    # Populate Metric Dict
-    metric_dict = OrderedDict{String,Any}()
-    for (name, metric) in metrics
-        metric_dict[name] = Metric(metric)
-    end
-
-    # Return MetricCollection
-    return MetricCollection(metric_dict)
+function Base.show(io::IO, x::MetricCollection)
+    print_tree(io, x)
 end
 
-_preprocess_metric(m::Pair{String, <:AbstractMetric}) = m
-_preprocess_metric(m::Pair{:Symbol, <:AbstractMetric}) = string(first(m)) => last(m)
-_preprocess_metric(m::AbstractMetric) = name(m) => m
-
-Base.keys(x::MetricCollection) = keys(x.metrics)
-Base.getindex(x::MetricCollection, i) = x.metrics[i]
-Base.setindex!(x::MetricCollection, val, key...) = Base.setindex!(x.metrics, val, keys...)
-Base.pairs(x::MetricCollection) = Base.pairs(x.metrics)
-
-function Base.show(io::IO, ::MIME"text/plain", x::MetricCollection)
-    printstyled(io, "MetricCollection(")
-    for (i, (name, metric)) in enumerate(x.metrics)
-        printstyled(io, "$name")
-        printstyled(io, "=")
-        printstyled(io, "$(_round(compute(metric), 4))")
-        i < length(x.metrics) && printstyled(io, ", ")
-    end
-    printstyled(io, ")")
-end
-
-"""
-    step!(x::MetricCollection, ŷ, y)
-    step!(x::MetricCollection, metric::String, ŷ, y)
-    step!(x::MetricCollection, metric::Regex, ŷ, y)
-
-Update the metric for the current epoch using the provided prediction/label pair.
-"""
-step!(md::MetricCollection, ŷ, y) = step!(md, r".*", ŷ, y)
-step!(md::MetricCollection, metric::String, ŷ, y) = step!(md.metrics[metric], ŷ, y)
-function step!(md::MetricCollection, pattern::Regex, ŷ, y)
-    foreach(metric -> step!(md, metric, ŷ, y), _filter_metrics(md, pattern))
-end
-
-_filter_metrics(md::MetricCollection, pat::Regex) = filter(x -> contains(x, pat), keys(md.metrics))
-
-reset!(md::MetricCollection) = foreach(reset!, values(md.metrics))
-
-function compute(md::MetricCollection)
-    names = keys(md) .|> Symbol |> Tuple
-    vals = [compute(md[name]) for name in keys(md)]
-    return NamedTuple{names}(vals)
+function step!(x::MetricCollection, ŷ, y)
+    foreach(metric -> step!(metric, ŷ, y), x.metrics)
 end

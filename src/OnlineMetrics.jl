@@ -1,13 +1,14 @@
-module BatchedMetrics
+module OnlineMetrics
 
+using AbstractTrees
 using Statistics, Match
-using OrderedCollections: OrderedDict
 using Pipe: @pipe
+using ArgCheck: @argcheck
 
 include("utils.jl")
 
 include("interface.jl")
-export AbstractMetric, Metric, name, init, update, step!, compute, reset!
+export AbstractMetric, name, step!, value
 
 include("collection.jl")
 export MetricCollection

@@ -1,14 +1,14 @@
 ```@meta
-CurrentModule = BatchedMetrics
+CurrentModule = OnlineMetrics
 ```
 
-# BatchedMetrics
+# OnlineMetrics
 
-Documentation for [BatchedMetrics](https://github.com/JoshuaBillson/BatchedMetrics.jl).
+Documentation for [OnlineMetrics](https://github.com/JoshuaBillson/OnlineMetrics.jl).
 
 ```@index
 ```
 
 ```@autodocs
-Modules = [BatchedMetrics]
+Modules = [OnlineMetrics]
 ```
