@@ -33,6 +33,8 @@ end
 
 value(m::MetricCollection) = map(value, m.metrics)
 
+params(m::MetricCollection) = map(params, m.metrics)
+
 AbstractTrees.children(x::MetricCollection) = x.metrics
 AbstractTrees.nodevalue(::MetricCollection) = MetricCollection
 
