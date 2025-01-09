@@ -55,8 +55,8 @@ end
 name(::MIoU) = "MIoU"
 
 function step!(x::MIoU, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
-    x.intersection += [sum((ŷ .== cls) .&& (y .== cls)) for cls in 0:x.nclasses-1]
-    x.union += [sum((ŷ .== cls) .|| (y .== cls)) for cls in 0:x.nclasses-1]
+    x.intersection += [sum((ŷ .== cls) .& (y .== cls)) for cls in 0:x.nclasses-1]
+    x.union += [sum((ŷ .== cls) .| (y .== cls)) for cls in 0:x.nclasses-1]
 end
 
 value(x::MIoU) = round(sum((x.intersection .+ eps(Float64)) ./ (x.union .+ eps(Float64))) / x.nclasses, digits=15)
