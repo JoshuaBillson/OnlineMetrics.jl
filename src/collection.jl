@@ -1,45 +1,32 @@
 """
-    MetricCollection(metrics...; prefix="")
+    MetricCollection(metrics...)
 
-An object to track one or more metrics. Each metric is associated with a unique name, 
-which defaults to `name(metric)`. This can be overriden by providing a `name => metric`
-pair. The `prefix` keyword adds a constant prefix string to every name.
+An object to track one or more metrics concurrently.
 
-# Example 1
+# Example
 ```jldoctest
-julia> md = MetricCollection(Accuracy(), MIoU([0,1]); prefix="train_");
+julia> mc = MetricCollection(Accuracy(), MIoU(2));
 
-julia> step!(md, [0, 0, 1, 0], [0, 0, 1, 1]);
+julia> step!(mc, [0, 0, 1, 0], [0, 0, 1, 1]);
 
-julia> md
-MetricCollection(train_accuracy=0.75, train_MIoU=0.5833333333333334)
-
-julia> step!(md, [0, 0, 1, 1], [0, 0, 1, 1]);
-
-julia> md
-MetricCollection(train_accuracy=0.875, train_MIoU=0.775)
-
-julia> reset!(md)
-
-julia> md
-MetricCollection(train_accuracy=0.0, train_MIoU=1.0)
-```
-
-# Example 2
-```jldoctest
-julia> md = MetricCollection("train_acc" => Accuracy(), "val_acc" => Accuracy());
-
-julia> step!(md, "train_acc", [0, 1, 1, 0], [1, 1, 1, 0]);  # update train_acc
-
-julia> step!(md, r"val_", [1, 1, 1, 0], [1, 1, 1, 0]);  # update metrics matching regex
-
-julia> md
-MetricCollection(train_acc=0.75, val_acc=1.0)
+julia> mc
+MetricCollection
+├─ Accuracy
+│  ├─ :value ⇒ 0.75
+│  ├─ :n ⇒ 4
+│  └─ :correct ⇒ 3
+└─ MIoU
+   ├─ :value ⇒ 0.583333
+   ├─ :union ⇒ [3, 2]
+   └─ :intersection ⇒ [2, 1]
 ```
 """
 struct MetricCollection{M}
     metrics::M
+    MetricCollection(metrics...) = MetricCollection(metrics)
+    MetricCollection(metrics::T) where {T <: Tuple} = new{T}(metrics)
 end
+
 
 AbstractTrees.children(x::MetricCollection) = x.metrics
 AbstractTrees.nodevalue(::MetricCollection) = MetricCollection
