@@ -145,4 +145,9 @@ end
     # Precision - No Positive Labels
     @test evaluate_metric(Recall(2), [0, 0, 0, 0], [0, 0, 0, 0]) == 1.0
     @test evaluate_metric(Recall(2), [1, 1, 1, 1], [1, 1, 1, 1]) == 1.0
+
+    # Confusion Matrix
+    evaluate_metric(ConfusionMatrix(2), y_pred_soft, y_correct) == [2 0; 0 2]
+    evaluate_metric(ConfusionMatrix(2), y_pred_soft, y_incorrect) == [0 2; 2 0]
+    evaluate_metric(ConfusionMatrix(2), y_pred_soft, y_mixed) == [1 1; 1 1]
 end

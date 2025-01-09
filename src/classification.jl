@@ -14,24 +14,22 @@ end
 """
     Accuracy()
     
-Measures the model's overall accuracy as `correct / total`.
+Measures the model's overall accuracy as `correct / n`.
 """
 mutable struct Accuracy <: ClassificationMetric
     correct::Int
-    total::Int
+    n::Int
     Accuracy() = new(0,0)
 end
 
-name(::Accuracy) = "accuracy"
-
 function step!(m::Accuracy, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
     m.correct += sum(ŷ .== y)
-    m.total += length(ŷ)
+    m.n += length(ŷ)
 end
 
-value(m::Accuracy) = m.correct / max(m.total, 1)
+value(m::Accuracy) = m.correct / max(m.n, 1)
 
-params(x::Accuracy) = (;n=x.total, x.correct)
+params(x::Accuracy) = (;x.n, x.correct)
 
 # MIoU
 
@@ -51,8 +49,6 @@ function MIoU(nclasses::Int)
     @argcheck nclasses >= 1
     return MIoU(nclasses, zeros(Int, nclasses), zeros(Int, nclasses))
 end
-
-name(::MIoU) = "MIoU"
 
 function step!(x::MIoU, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
     x.intersection += [sum((ŷ .== cls) .& (y .== cls)) for cls in 0:x.nclasses-1]
@@ -82,25 +78,17 @@ function ConfusionMatrix(nclasses::Int)
     return ConfusionMatrix(nclasses, zeros(Int, nclasses, nclasses))
 end
 
-name(::ConfusionMatrix) = "confusion"
-
 function params(x::ConfusionMatrix)
     tp, tn, fp, fn = _tfpn(x.confusion)
     return (;tp, tn, fp, fn)
 end
 
 function step!(x::ConfusionMatrix, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
-    return step!(x, reshape(ŷ, (1,:)), reshape(y, (1,:)))
-end
-function step!(x::ConfusionMatrix, ŷ::AbstractArray{<:Integer,4}, y::AbstractArray{<:Integer,4})
-    return step!(x,  _flatten(ŷ), _flatten(y))
-end
-function step!(x::ConfusionMatrix, ŷ::AbstractArray{<:Integer,2}, y::AbstractArray{<:Integer,2})
     classes = collect(0:x.nclasses-1)
     x.confusion .+= _onehot(ŷ, classes) * transpose(_onehot(y, classes))
 end
 
-value(x::ConfusionMatrix) = 0#x.confusion
+value(x::ConfusionMatrix) = x.confusion
 
 """
     Precision(nclasses::Int; agg=:macro)
@@ -128,8 +116,6 @@ function Precision(nclasses::Int; agg=:macro)
     @argcheck agg in (:macro, :micro, nothing)
     Precision(Symbol(agg), nclasses, zeros(Int, nclasses), zeros(Int, nclasses))
 end
-
-name(::Precision) = "precision"
 
 params(x::Precision) = (;x.agg, tp=x.tp, fp=x.fp)
 
@@ -174,8 +160,6 @@ function Recall(nclasses::Int; agg=:macro)
     @argcheck agg in (:macro, :micro, nothing)
     Recall(Symbol(agg), nclasses, zeros(Int, nclasses), zeros(Int, nclasses))
 end
-
-name(::Recall) = "recall"
 
 function step!(x::Recall, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
     x.tp .+= [_tp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
