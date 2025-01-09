@@ -218,7 +218,7 @@ A variant of `Recall` specialized for binary classification.
 """
 mutable struct BinaryRecall <: ClassificationMetric
     recall::Recall
-    BinaryPrecision() = new(Recall(2; agg=nothing))
+    BinaryRecall() = new(Recall(2; agg=nothing))
 end
 
 function step!(x::BinaryRecall, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
