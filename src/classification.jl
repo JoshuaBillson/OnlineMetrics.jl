@@ -17,14 +17,17 @@ end
 Measures the model's overall accuracy as `correct / n`.
 """
 mutable struct Accuracy <: ClassificationMetric
+    lock::ReentrantLock
     correct::Int
     n::Int
-    Accuracy() = new(0,0)
+    Accuracy() = new(ReentrantLock(), 0,0)
 end
 
 function step!(m::Accuracy, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
-    m.correct += sum(ŷ .== y)
-    m.n += length(ŷ)
+    lock(m.lock) do
+        m.correct += sum(ŷ .== y)
+        m.n += length(ŷ)
+    end
 end
 
 value(m::Accuracy) = m.correct / max(m.n, 1)
@@ -40,6 +43,7 @@ Mean Intersection over Union (MIoU) is a measure of the overlap between a predic
 This measure is frequently used for segmentation models.
 """
 mutable struct MIoU <: ClassificationMetric
+    lock::ReentrantLock
     nclasses::Int
     intersection::Vector{Int}
     union::Vector{Int}
@@ -47,12 +51,14 @@ end
 
 function MIoU(nclasses::Int)
     @argcheck nclasses >= 1
-    return MIoU(nclasses, zeros(Int, nclasses), zeros(Int, nclasses))
+    return MIoU(ReentrantLock(), nclasses, zeros(Int, nclasses), zeros(Int, nclasses))
 end
 
 function step!(x::MIoU, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
-    x.intersection += [sum((ŷ .== cls) .& (y .== cls)) for cls in 0:x.nclasses-1]
-    x.union += [sum((ŷ .== cls) .| (y .== cls)) for cls in 0:x.nclasses-1]
+    lock(x.lock) do
+        x.intersection += [sum((ŷ .== cls) .& (y .== cls)) for cls in 0:x.nclasses-1]
+        x.union += [sum((ŷ .== cls) .| (y .== cls)) for cls in 0:x.nclasses-1]
+    end
 end
 
 value(x::MIoU) = round(sum((x.intersection .+ eps(Float64)) ./ (x.union .+ eps(Float64))) / x.nclasses, digits=15)
@@ -69,26 +75,29 @@ matrix correspond to the true label while the rows correspond to the prediction.
 - `nclasses::Int`: The number of possible classes in the classification task.
 """
 mutable struct ConfusionMatrix <: ClassificationMetric
+    lock::ReentrantLock
     nclasses::Int
     confusion::Matrix{Int}
 end
 
 function ConfusionMatrix(nclasses::Int)
     @argcheck nclasses > 0
-    return ConfusionMatrix(nclasses, zeros(Int, nclasses, nclasses))
+    return ConfusionMatrix(ReentrantLock(), nclasses, zeros(Int, nclasses, nclasses))
 end
+
+function step!(x::ConfusionMatrix, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
+    lock(x.lock) do
+        classes = collect(0:x.nclasses-1)
+        x.confusion .+= _onehot(ŷ, classes) * transpose(_onehot(y, classes))
+    end
+end
+
+value(x::ConfusionMatrix) = x.confusion
 
 function params(x::ConfusionMatrix)
     tp, tn, fp, fn = _tfpn(x.confusion)
     return (;tp, tn, fp, fn)
 end
-
-function step!(x::ConfusionMatrix, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
-    classes = collect(0:x.nclasses-1)
-    x.confusion .+= _onehot(ŷ, classes) * transpose(_onehot(y, classes))
-end
-
-value(x::ConfusionMatrix) = x.confusion
 
 """
     Precision(nclasses::Int; agg=:macro)
@@ -96,15 +105,16 @@ value(x::ConfusionMatrix) = x.confusion
 Precision is the ratio of true positives to the sum of true positives and false positives, measuring the accuracy of positive predictions.
 
 # Arguments
-- `classes::Vector{Int}`: A vector of integer class labels representing the possible classes for the classification task.
+- `nclasses::Int`: The number of classes for the classification task.
 
 # Keyword Arguments
 - `agg`: Specifies the type of precision aggregation to be computed. The possible values are:
-  - `:macro`: Calculates macro-averaged precision, which computes the precision for each class independently and then takes the average.
-  - `:micro`: Calculates micro-averaged precision, which aggregates the contributions of all classes to compute a single precision value.
-  - `:nothing`: Calculates the per-class precision, which is returned as a `Vector` with the same length as `classes`.
+- `:macro`: Calculates macro-averaged precision, which computes the precision for each class independently and then takes the average.
+- `:micro`: Calculates micro-averaged precision, which aggregates the contributions of all classes to compute a single precision value.
+- `:nothing`: Calculates the per-class precision, which is returned as a `Vector` with the same length as `classes`.
 """
 mutable struct Precision <: ClassificationMetric
+    lock::ReentrantLock
     agg::Symbol
     nclasses::Int
     tp::Vector{Int}
@@ -114,15 +124,17 @@ end
 function Precision(nclasses::Int; agg=:macro)
     @argcheck nclasses > 0
     @argcheck agg in (:macro, :micro, nothing)
-    Precision(Symbol(agg), nclasses, zeros(Int, nclasses), zeros(Int, nclasses))
+    Precision(ReentrantLock(), Symbol(agg), nclasses, zeros(Int, nclasses), zeros(Int, nclasses))
+end
+
+function step!(x::Precision, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
+    lock(x.lock) do
+        x.tp .+= [_tp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
+        x.fp .+= [_fp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
+    end
 end
 
 params(x::Precision) = (;x.agg, tp=x.tp, fp=x.fp)
-
-function step!(x::Precision, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
-    x.tp .+= [_tp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
-    x.fp .+= [_fp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
-end
 
 function value(x::Precision)
     ϵ = eps(Float64)
@@ -135,20 +147,39 @@ function value(x::Precision)
 end
 
 """
+    BinaryPrecision()
+
+A variant of `Precision` specialized for binary classification.
+"""
+mutable struct BinaryPrecision <: ClassificationMetric
+    precision::Precision
+    BinaryPrecision() = new(Precision(2; agg=nothing))
+end
+
+function step!(x::BinaryPrecision, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
+    step!(x.precision, ŷ, y)
+end
+
+params(x::BinaryPrecision) = (;tp=x.precision.tp[2], fp=x.precision.fp[2])
+
+value(x::BinaryPrecision) = value(x.precision)[2]
+
+"""
     Recall(nclasses::Int; agg=:macro)
 
 Recall, also known as sensitivity or true positive rate, is the ratio of true positives to the sum of true positives and false negatives, measuring the ability of the classifier to identify all positive instances.
 
 # Arguments
-- `classes::Vector{Int}`: A vector of integer class labels representing the possible classes for the classification task.
+- `nclasses::Int`: The number of classes for the classification task.
 
 # Keyword Arguments
 - `agg`: Specifies the type of recall aggregation to be computed. The possible values are:
-  - `:macro`: Calculates macro-averaged recall, which computes the recall for each class independently and then takes the average.
-  - `:micro`: Calculates micro-averaged recall, which aggregates the contributions of all classes to compute a single recall value.
-  - `:nothing`: Calculates the per-class recall, which is returned as a `Vector` with the same length as `classes`.
+- `:macro`: Calculates macro-averaged recall, which computes the recall for each class independently and then takes the average.
+- `:micro`: Calculates micro-averaged recall, which aggregates the contributions of all classes to compute a single recall value.
+- `:nothing`: Calculates the per-class recall, which is returned as a `Vector` with the same length as `classes`.
 """
 mutable struct Recall <: ClassificationMetric
+    lock::ReentrantLock
     agg::Symbol
     nclasses::Int
     tp::Vector{Int}
@@ -158,12 +189,14 @@ end
 function Recall(nclasses::Int; agg=:macro)
     @argcheck nclasses > 0
     @argcheck agg in (:macro, :micro, nothing)
-    Recall(Symbol(agg), nclasses, zeros(Int, nclasses), zeros(Int, nclasses))
+    Recall(ReentrantLock(), Symbol(agg), nclasses, zeros(Int, nclasses), zeros(Int, nclasses))
 end
 
 function step!(x::Recall, ŷ::AbstractVector{<:Integer}, y::AbstractVector{<:Integer})
-    x.tp .+= [_tp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
-    x.fn .+= [_fn(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
+    lock(x.lock) do
+        x.tp .+= [_tp(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
+        x.fn .+= [_fn(ŷ .== i, y .== i) for i in _classes(x.nclasses)]
+    end
 end
 
 function value(x::Recall)

@@ -8,13 +8,13 @@ using ArgCheck: @argcheck
 include("utils.jl")
 
 include("interface.jl")
-export AbstractMetric, name, step!, value
+export AbstractMetric, step!, value, params
 
 include("collection.jl")
 export MetricCollection
 
 include("classification.jl")
-export ClassificationMetric, Accuracy, MIoU, ConfusionMatrix, Precision, Recall
+export ClassificationMetric, Accuracy, MIoU, ConfusionMatrix, BinaryPrecision, Precision, Recall
 
 include("misc.jl")
 export AverageMeasure
