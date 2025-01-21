@@ -6,7 +6,7 @@ assumes that both `ŷ` and `y` are encoded as integers.
 abstract type ClassificationMetric <: AbstractMetric end
 
 function step!(x::ClassificationMetric, ŷ::AbstractArray{<:Real}, y::AbstractArray{<:Real})
-    return step!(x, _onecold(ŷ), _onecold(y))
+    return step!(x, _logits(ŷ), _logits(y))
 end
 
 # Accuracy

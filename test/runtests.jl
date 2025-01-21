@@ -19,135 +19,130 @@ function generate_batches(x::AbstractArray{<:Any,N}) where N
     return [selectdim(x, N, i:i) for i in 1:obs]
 end
 
+hard_labels(x::AbstractVector{<:AbstractFloat}) = round.(Int, x)
+
+onehot_labels(x::AbstractVector{<:AbstractFloat}) = OnlineMetrics._onehot(round.(Int, x), 0:1)
+
+function softmax_labels(x::AbstractVector{<:AbstractFloat})
+    return cat(1 .- reshape(x, (1,:)), reshape(x, (1,:)), dims=1)
+end
+
 @testset "class metrics" begin
-    y_pred_soft = [0.1, 0.8, 0.51, 0.49]
-    y_pred_hard = [0, 1, 1, 0]
-    y_pred_onehot = hcat([1, 0], [0, 1], [0, 1], [1, 0])
-    y_pred_softmax = hcat([0.9, 0.1], [0.2, 0.8], [0.49, 0.51], [0.51, 0.49])
-    y_correct = [0, 1, 1, 0]
-    y_incorrect = [1, 0, 0, 1]
-    y_mixed = [0, 0, 1, 1]
+    y_pred = [0.1, 0.8, 0.51, 0.49]
+    y_correct = [0.05, 0.95, 0.95, 0.05]
+    y_incorrect = [0.95, 0.05, 0.05, 0.95]
+    y_mixed = [0.05, 0.05, 0.95, 0.95]
 
-    # Accuracy - Soft Predictions
-    @test evaluate_metric(Accuracy(), y_pred_soft, y_correct) == 1
-    @test evaluate_metric(Accuracy(), y_pred_soft, y_incorrect) == 0
-    @test evaluate_metric(Accuracy(), y_pred_soft, y_mixed) == 0.5
+    # Accuracy - All Correct
+    for ŷ in (y_pred, hard_labels(y_pred), onehot_labels(y_pred), softmax_labels(y_pred))
+        for y in (y_correct, hard_labels(y_correct), onehot_labels(y_correct), softmax_labels(y_correct))
+            @test evaluate_metric(Accuracy(), ŷ, y) == 1
+            @test evaluate_metric_batched(Accuracy(), ŷ, y) == 1
+        end
+    end
 
-    # Accuracy - Multi Batch
-    @test evaluate_metric_batched(Accuracy(), y_pred_soft, y_correct) == 1
-    @test evaluate_metric_batched(Accuracy(), y_pred_soft, y_incorrect) == 0
-    @test evaluate_metric_batched(Accuracy(), y_pred_soft, y_mixed) == 0.5
+    # Accuracy - All Incorrect
+    for ŷ in (y_pred, hard_labels(y_pred), onehot_labels(y_pred), softmax_labels(y_pred))
+        for y in (y_incorrect, hard_labels(y_incorrect), onehot_labels(y_incorrect), softmax_labels(y_incorrect))
+            @test evaluate_metric(Accuracy(), ŷ, y) == 0
+            @test evaluate_metric_batched(Accuracy(), ŷ, y) == 0
+        end
+    end
 
-    # Accuracy - Hard Predictions
-    @test evaluate_metric(Accuracy(), y_pred_hard, y_correct) == 1
-    @test evaluate_metric(Accuracy(), y_pred_hard, y_incorrect) == 0
-    @test evaluate_metric(Accuracy(), y_pred_hard, y_mixed) == 0.5
+    # Accuracy - Half Incorrect
+    for ŷ in (y_pred, hard_labels(y_pred), onehot_labels(y_pred), softmax_labels(y_pred))
+        for y in (y_mixed, hard_labels(y_mixed), onehot_labels(y_mixed), softmax_labels(y_mixed))
+            @test evaluate_metric(Accuracy(), ŷ, y) == 0.5
+            @test evaluate_metric_batched(Accuracy(), ŷ, y) == 0.5
+        end
+    end
 
-    # Accuracy - One-Hot Predictions
-    @test evaluate_metric(Accuracy(), y_pred_onehot, y_correct) == 1
-    @test evaluate_metric(Accuracy(), y_pred_onehot, y_incorrect) == 0
-    @test evaluate_metric(Accuracy(), y_pred_onehot, y_mixed) == 0.5
+    # MIoU - All Correct
+    for ŷ in (y_pred, hard_labels(y_pred), onehot_labels(y_pred), softmax_labels(y_pred))
+        for y in (y_correct, hard_labels(y_correct), onehot_labels(y_correct), softmax_labels(y_correct))
+            @test evaluate_metric(MIoU(2), ŷ, y) == 1
+            @test evaluate_metric_batched(MIoU(2), ŷ, y) == 1
+        end
+    end
 
-    # Accuracy - Softmax Predictions
-    @test evaluate_metric(Accuracy(), y_pred_softmax, y_correct) == 1
-    @test evaluate_metric(Accuracy(), y_pred_softmax, y_incorrect) == 0
-    @test evaluate_metric(Accuracy(), y_pred_softmax, y_mixed) == 0.5
+    # MIoU - All Incorrect
+    for ŷ in (y_pred, hard_labels(y_pred), onehot_labels(y_pred), softmax_labels(y_pred))
+        for y in (y_incorrect, hard_labels(y_incorrect), onehot_labels(y_incorrect), softmax_labels(y_incorrect))
+            @test evaluate_metric(MIoU(2), ŷ, y) == 0
+            @test evaluate_metric_batched(MIoU(2), ŷ, y) == 0
+        end
+    end
 
-    # Accuracy - Soft Labels
-    evaluate_metric(Accuracy(), y_pred_hard, [0.05, 0.05, 0.95, 0.95]) == 0.5
-
-    # Accuracy - One-Hot Labels
-    evaluate_metric(Accuracy(), y_pred_softmax, hcat([1, 0], [1, 0], [0, 1], [0, 1])) == 0.5
-
-    # MIoU - Soft Predictions
-    @test evaluate_metric(MIoU(2), y_pred_soft, y_correct) == 1
-    @test isapprox(evaluate_metric(MIoU(2), y_pred_soft, y_incorrect), 0, atol=1e-15)
-    @test evaluate_metric(MIoU(2), y_pred_soft, y_mixed) ≈ 1 / 3
-
-    # MIoU - Multi Batch
-    @test evaluate_metric_batched(MIoU(2), y_pred_soft, y_correct) == 1
-    @test isapprox(evaluate_metric_batched(MIoU(2), y_pred_soft, y_incorrect), 0, atol=1e-15)
-    @test evaluate_metric_batched(MIoU(2), y_pred_soft, y_mixed) ≈ 1/3
-
-    # MIoU - Hard Predictions
-    @test evaluate_metric_batched(MIoU(2), y_pred_hard, y_correct) == 1
-    @test isapprox(evaluate_metric_batched(MIoU(2), y_pred_hard, y_incorrect), 0, atol=1e-15)
-    @test evaluate_metric_batched(MIoU(2), y_pred_hard, y_mixed) ≈ 1/3
-
-    # MIoU - One-Hot Predictions
-    @test evaluate_metric_batched(MIoU(2), y_pred_onehot, y_correct) == 1
-    @test isapprox(evaluate_metric_batched(MIoU(2), y_pred_onehot, y_incorrect), 0, atol=1e-15)
-    @test evaluate_metric_batched(MIoU(2), y_pred_onehot, y_mixed) ≈ 1/3
-
-    # MIoU - Softmax Predictions
-    @test evaluate_metric_batched(MIoU(2), y_pred_softmax, y_correct) == 1
-    @test isapprox(evaluate_metric_batched(MIoU(2), y_pred_softmax, y_incorrect), 0, atol=1e-15)
-    @test evaluate_metric_batched(MIoU(2), y_pred_softmax, y_mixed) ≈ 1/3
+    # MIoU - Half Incorrect
+    for ŷ in (y_pred, hard_labels(y_pred), onehot_labels(y_pred), softmax_labels(y_pred))
+        for y in (y_mixed, hard_labels(y_mixed), onehot_labels(y_mixed), softmax_labels(y_mixed))
+            @test evaluate_metric(MIoU(2), ŷ, y) ≈ 1/3
+            @test evaluate_metric_batched(MIoU(2), ŷ, y) ≈ 1/3
+        end
+    end
 
     # MIoU - No Positive Labels
     @test evaluate_metric(MIoU(2), [0, 0, 0, 0], [0, 0, 0, 0]) == 1.0
     @test evaluate_metric(MIoU(2), [1, 1, 1, 1], [1, 1, 1, 1]) == 1.0
 
-    # Precision - Soft Predictions
-    @test evaluate_metric(Precision(2), y_pred_soft, y_correct) == 1
-    @test evaluate_metric(Precision(2), y_pred_soft, y_incorrect) == 0
-    @test evaluate_metric(Precision(2), y_pred_soft, y_mixed) == 0.5
+    # Precision - All Correct
+    for ŷ in (y_pred, hard_labels(y_pred), onehot_labels(y_pred), softmax_labels(y_pred))
+        for y in (y_correct, hard_labels(y_correct), onehot_labels(y_correct), softmax_labels(y_correct))
+            @test evaluate_metric(Precision(2), ŷ, y) == 1
+            @test evaluate_metric_batched(Precision(2), ŷ, y) == 1
+        end
+    end
 
-    # Precision - Multi Batch
-    @test evaluate_metric_batched(Precision(2), y_pred_soft, y_correct) == 1
-    @test evaluate_metric_batched(Precision(2), y_pred_soft, y_incorrect) == 0
-    @test evaluate_metric_batched(Precision(2), y_pred_soft, y_mixed) == 0.5
+    # Precision - All Incorrect
+    for ŷ in (y_pred, hard_labels(y_pred), onehot_labels(y_pred), softmax_labels(y_pred))
+        for y in (y_incorrect, hard_labels(y_incorrect), onehot_labels(y_incorrect), softmax_labels(y_incorrect))
+            @test evaluate_metric(Precision(2), ŷ, y) == 0
+            @test evaluate_metric_batched(Precision(2), ŷ, y) == 0
+        end
+    end
 
-    # Precision - Hard Predictions
-    @test evaluate_metric(Precision(2), y_pred_hard, y_correct) == 1
-    @test evaluate_metric(Precision(2), y_pred_hard, y_incorrect) == 0
-    @test evaluate_metric(Precision(2), y_pred_hard, y_mixed) == 0.5
-
-    # Precision - One-Hot Predictions
-    @test evaluate_metric(Precision(2), y_pred_onehot, y_correct) == 1
-    @test evaluate_metric(Precision(2), y_pred_onehot, y_incorrect) == 0
-    @test evaluate_metric(Precision(2), y_pred_onehot, y_mixed) == 0.5
-
-    # Precision - Softmax Predictions
-    @test evaluate_metric(Precision(2), y_pred_softmax, y_correct) == 1
-    @test evaluate_metric(Precision(2), y_pred_softmax, y_incorrect) == 0
-    @test evaluate_metric(Precision(2), y_pred_softmax, y_mixed) == 0.5
+    # Precision - Half Incorrect
+    for ŷ in (y_pred, hard_labels(y_pred), onehot_labels(y_pred), softmax_labels(y_pred))
+        for y in (y_mixed, hard_labels(y_mixed), onehot_labels(y_mixed), softmax_labels(y_mixed))
+            @test evaluate_metric(Precision(2), ŷ, y) == 0.5
+            @test evaluate_metric_batched(Precision(2), ŷ, y) == 0.5
+        end
+    end
 
     # Precision - No Positive Labels
     @test evaluate_metric(Precision(2), [0, 0, 0, 0], [0, 0, 0, 0]) == 1.0
     @test evaluate_metric(Precision(2), [1, 1, 1, 1], [1, 1, 1, 1]) == 1.0
 
-    # Precision - Soft Predictions
-    @test evaluate_metric(Recall(2), y_pred_soft, y_correct) == 1
-    @test evaluate_metric(Recall(2), y_pred_soft, y_incorrect) == 0
-    @test evaluate_metric(Recall(2), y_pred_soft, y_mixed) == 0.5
+    # Recall - All Correct
+    for ŷ in (y_pred, hard_labels(y_pred), onehot_labels(y_pred), softmax_labels(y_pred))
+        for y in (y_correct, hard_labels(y_correct), onehot_labels(y_correct), softmax_labels(y_correct))
+            @test evaluate_metric(Recall(2), ŷ, y) == 1
+            @test evaluate_metric_batched(Recall(2), ŷ, y) == 1
+        end
+    end
 
-    # Precision - Multi Batch
-    @test evaluate_metric_batched(Recall(2), y_pred_soft, y_correct) == 1
-    @test evaluate_metric_batched(Recall(2), y_pred_soft, y_incorrect) == 0
-    @test evaluate_metric_batched(Recall(2), y_pred_soft, y_mixed) == 0.5
+    # Recall - All Incorrect
+    for ŷ in (y_pred, hard_labels(y_pred), onehot_labels(y_pred), softmax_labels(y_pred))
+        for y in (y_incorrect, hard_labels(y_incorrect), onehot_labels(y_incorrect), softmax_labels(y_incorrect))
+            @test evaluate_metric(Recall(2), ŷ, y) == 0
+            @test evaluate_metric_batched(Recall(2), ŷ, y) == 0
+        end
+    end
 
-    # Precision - Hard Predictions
-    @test evaluate_metric(Recall(2), y_pred_hard, y_correct) == 1
-    @test evaluate_metric(Recall(2), y_pred_hard, y_incorrect) == 0
-    @test evaluate_metric(Recall(2), y_pred_hard, y_mixed) == 0.5
+    # Recall - Half Incorrect
+    for ŷ in (y_pred, hard_labels(y_pred), onehot_labels(y_pred), softmax_labels(y_pred))
+        for y in (y_mixed, hard_labels(y_mixed), onehot_labels(y_mixed), softmax_labels(y_mixed))
+            @test evaluate_metric(Recall(2), ŷ, y) == 0.5
+            @test evaluate_metric_batched(Recall(2), ŷ, y) == 0.5
+        end
+    end
 
-    # Precision - One-Hot Predictions
-    @test evaluate_metric(Recall(2), y_pred_onehot, y_correct) == 1
-    @test evaluate_metric(Recall(2), y_pred_onehot, y_incorrect) == 0
-    @test evaluate_metric(Recall(2), y_pred_onehot, y_mixed) == 0.5
-
-    # Precision - Softmax Predictions
-    @test evaluate_metric(Recall(2), y_pred_softmax, y_correct) == 1
-    @test evaluate_metric(Recall(2), y_pred_softmax, y_incorrect) == 0
-    @test evaluate_metric(Recall(2), y_pred_softmax, y_mixed) == 0.5
-
-    # Precision - No Positive Labels
+    # Recall - No Positive Labels
     @test evaluate_metric(Recall(2), [0, 0, 0, 0], [0, 0, 0, 0]) == 1.0
     @test evaluate_metric(Recall(2), [1, 1, 1, 1], [1, 1, 1, 1]) == 1.0
 
     # Confusion Matrix
-    evaluate_metric(ConfusionMatrix(2), y_pred_soft, y_correct) == [2 0; 0 2]
-    evaluate_metric(ConfusionMatrix(2), y_pred_soft, y_incorrect) == [0 2; 2 0]
-    evaluate_metric(ConfusionMatrix(2), y_pred_soft, y_mixed) == [1 1; 1 1]
+    evaluate_metric(ConfusionMatrix(2), y_pred, y_correct) == [2 0; 0 2]
+    evaluate_metric(ConfusionMatrix(2), y_pred, y_incorrect) == [0 2; 2 0]
+    evaluate_metric(ConfusionMatrix(2), y_pred, y_mixed) == [1 1; 1 1]
 end

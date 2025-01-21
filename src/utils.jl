@@ -6,9 +6,9 @@ end
 
 _flatten(x::AbstractArray{<:Real,4}) = @pipe permutedims(x, (3, 1, 2, 4)) |> reshape(_, (size(x, 3), :))
 
-_onecold(x::AbstractVector{<:Integer}) = x
-_onecold(x::AbstractVector{<:Real}) = round.(Int, x)
-function _onecold(x::AbstractArray{<:Real,N}) where N
+_logits(x::AbstractVector{<:Integer}) = x
+_logits(x::AbstractVector{<:Real}) = round.(Int, x)
+function _logits(x::AbstractArray{<:Real,N}) where N
     if size(x, N-1) > 1
         return vec(mapslices(argmax, x, dims=N-1) .- 1)
     else
@@ -18,11 +18,15 @@ function _onecold(x::AbstractArray{<:Real,N}) where N
 end
 
 _onehot(x::AbstractVector, labels) = _onehot(reshape(x, (1,:)), labels)
-function _onehot(x::AbstractArray{<:Any,N}, labels) where {N}
-    if size(x, N-1) == 1
+function _onehot(x::AbstractArray{T,N}, labels) where {T<:Real,N}
+    if size(x, N-1) == 1  # Labels Encoded as Logits
         return cat(map(label -> x .== label, labels)..., dims=N-1)
+    else  # Labels Encoded as Smooth One-Hot
+        @argcheck length(labels) == size(x,N-1)
+        dst = zeros(T, size(x))
+        dst[argmax(x, dims=N-1)] .= T(1)
+        return dst
     end
-    return x
 end
 
 _classes(nclasses::Int) = collect(0:nclasses-1)
