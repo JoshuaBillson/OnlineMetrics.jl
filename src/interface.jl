@@ -47,6 +47,13 @@ Returns any internal parameters used to track the metric's current value.
 """
 params(::AbstractMetric) = (;)
 
+"""
+    name(m::AbstractMetric)
+
+Return the human readable name of the metric.
+"""
+function name end
+
 function Base.show(io::IO, x::AbstractMetric)
     print_tree(io, x)
 end
@@ -57,5 +64,5 @@ end
 
 AbstractTrees.nodevalue(x::NodeValue) = x.val
 
-AbstractTrees.nodevalue(::T) where {T <: AbstractMetric} = T
+AbstractTrees.nodevalue(x::AbstractMetric) = Symbol(name(x))
 AbstractTrees.children(x::AbstractMetric) = map(NodeValue, (;value = value(x), params(x)...))

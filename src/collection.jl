@@ -5,17 +5,17 @@ An object to track one or more metrics concurrently.
 
 # Example
 ```jldoctest
-julia> mc = MetricCollection(Accuracy(), MIoU(2));
+julia> mc = MetricCollection(Accuracy(2), MIoU(2));
 
 julia> step!(mc, [0, 0, 1, 0], [0, 0, 1, 1]);
 
 julia> mc
 MetricCollection
-├─ Accuracy
+├─ :accuracy
 │  ├─ :value ⇒ 0.75
 │  ├─ :n ⇒ 4
 │  └─ :correct ⇒ 3
-└─ MIoU
+└─ :MIoU
    ├─ :value ⇒ 0.583333
    ├─ :union ⇒ [3, 2]
    └─ :intersection ⇒ [2, 1]
@@ -31,9 +31,13 @@ function step!(x::MetricCollection, ŷ, y)
     foreach(metric -> step!(metric, ŷ, y), x.metrics)
 end
 
-value(m::MetricCollection) = map(value, m.metrics)
+function value(m::MetricCollection)
+    return NamedTuple([Symbol(name(metric)) => value(metric) for metric in m.metrics])
+end
 
 params(m::MetricCollection) = map(params, m.metrics)
+
+name(::MetricCollection) = "MetricCollection"
 
 AbstractTrees.children(x::MetricCollection) = x.metrics
 AbstractTrees.nodevalue(::MetricCollection) = MetricCollection

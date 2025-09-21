@@ -1,39 +1,20 @@
-# Merge to NamedTuples by applying a binary function to each matching field
-function _merge_tuples(op, nt1::T, nt2::T) where {T <: NamedTuple}
-    fieldnames = keys(nt1)
-    return NamedTuple{fieldnames}(op(nt1[i], nt2[i]) for i in fieldnames)
-end
-
-_flatten(x::AbstractArray{<:Real,4}) = @pipe permutedims(x, (3, 1, 2, 4)) |> reshape(_, (size(x, 3), :))
-
-_logits(x::AbstractVector{<:Integer}) = x
-_logits(x::AbstractVector{<:Real}) = round.(Int, x)
-function _logits(x::AbstractArray{<:Real,N}) where N
-    if size(x, N-1) > 1
-        return vec(mapslices(argmax, x, dims=N-1) .- 1)
+one_hot(x::OneHotMatrix, ::Int) = x
+one_hot(x::AbstractVector{<:Integer}, nclasses::Int) = onehotbatch(x, 0:nclasses-1)
+one_hot(x::AbstractVector{<:Real}, nclasses::Int) = one_hot(round.(Int, x), nclasses)
+function one_hot(x::AbstractArray{<:Real,N}, nclasses::Int) where N
+    if size(x,N-1) == 1
+        return one_hot(reshape(x, :), nclasses)
+    elseif size(x,N-1) == nclasses
+        return @pipe mapslices(argmax, x, dims=N-1) |> reshape(_, :) |> one_hot(_ .- 1, nclasses)
     else
-        return round.(Int, x) |> vec
-    end
-
-end
-
-_onehot(x::AbstractVector, labels) = _onehot(reshape(x, (1,:)), labels)
-function _onehot(x::AbstractArray{T,N}, labels) where {T<:Real,N}
-    if size(x, N-1) == 1  # Labels Encoded as Logits
-        return cat(map(label -> x .== label, labels)..., dims=N-1)
-    else  # Labels Encoded as Smooth One-Hot
-        @argcheck length(labels) == size(x,N-1)
-        dst = zeros(T, size(x))
-        dst[argmax(x, dims=N-1)] .= T(1)
-        return dst
+        throw(ArgumentError("Expected dim $(N-1) to be of size 1 of $nclasses, got $(size(x,N-1))"))
     end
 end
 
-_classes(nclasses::Int) = collect(0:nclasses-1)
-
-_round(x::Integer, ::Int) = x
-_round(x::Real, digits::Int) = round(x, digits=digits)
-_round(x::AbstractArray, digits::Int) = _round.(x, digits)
+function weighted_average(x::AbstractArray{<:Real}, avg::Real, n::Integer)
+    m = length(x)
+    return (avg * (n / (n + m))) + (mean(x) * (m / (n + m)))
+end
 
 _tp(ŷ::AbstractArray{<:Integer}, y::AbstractArray{<:Integer}) = sum(ŷ .* y)
 
@@ -43,7 +24,13 @@ _fp(ŷ::AbstractArray{<:Integer}, y::AbstractArray{<:Integer}) = sum(ŷ .* (1 
 
 _fn(ŷ::AbstractArray{<:Integer}, y::AbstractArray{<:Integer}) = sum((1 .- ŷ) .* y)
 
-function _tfpn(confusion_matrix::AbstractMatrix{<:Real})
+function _confusion_matrix(y_pred::OneHotMatrix, y_true::OneHotMatrix)
+    @assert size(y_pred) == size(y_true)
+    return y_pred * transpose(y_true) 
+end
+
+_tfpn(y_pred::OneHotMatrix, y_true::OneHotMatrix) = _confusion_matrix(y_pred, y_true) |> _tfpn
+function _tfpn(confusion_matrix::AbstractMatrix)
     nclasses = size(confusion_matrix, 1)
     TP = zeros(Int, nclasses)
     TN = zeros(Int, nclasses)
