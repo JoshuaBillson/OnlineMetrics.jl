@@ -4,12 +4,13 @@
 Tracks the average of the given measure over mini-batches.
 """
 mutable struct AverageMeasure{M} <: AbstractMetric
+    name::String
     measure::M
     n::Int
     avg::Float64
 end
 
-AverageMeasure(measure::Function) = AverageMeasure(measure, 0, 0.0)
+AverageMeasure(measure::Function, name::String) = AverageMeasure(name, measure, 0, 0.0)
 
 function step!(x::AverageMeasure, y_pred::AbstractArray{<:Real}, y_true::AbstractArray{<:Real})
     @argcheck length(y_pred) == length(y_true)
@@ -22,6 +23,8 @@ end
 value(x::AverageMeasure) = x.avg
 
 params(x::AverageMeasure) = (;x.n)
+
+name(x::AverageMeasure) = x.name
 
 """
     MAE()
@@ -45,6 +48,8 @@ value(x::MAE) = x.avg
 
 params(x::MAE) = (;x.n)
 
+name(x::MAE) = "mae"
+
 """
     MSE()
 
@@ -66,3 +71,5 @@ end
 value(x::MSE) = x.avg
 
 params(x::MSE) = (;x.n)
+
+name(x::MSE) = "mse"
