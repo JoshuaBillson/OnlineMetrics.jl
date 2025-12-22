@@ -4,3 +4,87 @@
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://JoshuaBillson.github.io/OnlineMetrics.jl/dev/)
 [![Build Status](https://github.com/JoshuaBillson/OnlineMetrics.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JoshuaBillson/OnlineMetrics.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/JoshuaBillson/OnlineMetrics.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JoshuaBillson/OnlineMetrics.jl)
+
+OnlineMetrics.jl provides composable, incremental metrics for online and streaming machine-learning workflows. Metrics implement a small, consistent interface so they can be updated batch-by-batch, merged across devices/processes, and queried for current values with minimal overhead.
+
+## Features
+- Incremental (online) metric updates — no need to store full datasets.
+- Composable primitives: `Metric` and `MetricCollection` to track single and multiple metrics.
+- Mergeable states for distributed/parallel aggregation.
+- Pluggable data formats (e.g., `OneHot`) with validation and formatting hooks.
+- Small, explicit API surface for easy extension.
+
+## Design philosophy
+- Minimal, explicit interface: implement `AbstractMetric` and the handful of required functions (`name`, `initial_state`, `batch_state`, `merge_state`, `current_value`) to add a new metric.
+- Robust input handling: metrics declare or accept data formats; validation and formatting are separated from core metric logic.
+- Composability & portability: metrics are lightweight, serializable via their states, and merge-friendly for aggregation across devices or processes.
+- Usability: friendly `Base.show` representations and `MetricCollection` tree-printing for quick inspection.
+
+## Quickstart
+
+Install:
+```julia
+using Pkg
+Pkg.add("OnlineMetrics")
+```
+
+Basic usage:
+```julia
+using OnlineMetrics
+
+m = Metric(Accuracy(2))                    # track a single metric
+mc = MetricCollection(Accuracy(2), Precision(2))
+
+step!(m, [0,1,1,0], [0,1,0,0])             # update with a batch
+step!(mc, [0,1,1,0], [0,1,0,0])            # update collection
+
+value(m)                                   # current value of single metric
+value(mc)                                  # NamedTuple of values for collection
+```
+
+Merging states (useful for distributed runs):
+```julia
+m1 = Metric(Accuracy(2)); step!(m1, preds1, labels1)
+m2 = Metric(Accuracy(2)); step!(m2, preds2, labels2)
+m_merged = merge(m1, m2)
+value(m_merged)
+```
+
+## API highlights
+- `AbstractMetric` — implement this to create a new metric.
+- Core methods to implement:
+  - `name(m::AbstractMetric)`
+  - `initial_state(m::AbstractMetric)`
+  - `batch_state(m::AbstractMetric, ŷ, y)`
+  - `merge_state(m::AbstractMetric, s1, s2)`
+  - `current_value(m::AbstractMetric, state)`
+- Convenience types:
+  - `Metric(m::AbstractMetric)` — tracks a metric and its state.
+  - `MetricCollection(metrics...)` — group multiple `Metric`s.
+- Helpers:
+  - `step!(x, ŷ, y)` — update a `Metric` or `MetricCollection`.
+  - `value(x)` — compute current metric value(s).
+  - `merge(...)` — merge `Metric` or `MetricCollection` instances.
+
+## Examples
+See the src folder for metric implementations and runtests.jl for usage examples and test-driven behavior. Typical metrics in the repo: `Accuracy`, `Precision`, `mIoU`.
+
+## Development & testing
+Run tests from the package root:
+```bash
+julia --project=. -e 'using Pkg; Pkg.test()'
+```
+Or in the package REPL:
+```julia
+] test OnlineMetrics
+```
+
+## Contributing
+Contributions welcome. Please open issues or pull requests for bug fixes, new metrics, or API improvements. Follow existing style in src and add tests to runtests.jl.
+
+## License
+Distributed under the terms of the MIT license. See the LICENSE file.
+
+---
+
+Would you like me to write this into README.md in the project root now?
