@@ -26,7 +26,7 @@ function value end
 """
     Metric(m::AbstractMetric; name=name(m))
 
-A struct to track a single metric and its state over multiple mini-batches.
+An object to track a single metric and its state over multiple mini-batches.
 
 # Parameters
 - `m::AbstractMetric`: A metric to be tracked.
