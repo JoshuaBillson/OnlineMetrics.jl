@@ -3,7 +3,7 @@
 
 An abstract type representing a data format for classification tasks.
 
-Subtypes should implement the `format` and `validate` methods.
+Subtypes should implement the [`format`](@ref) and [`validate`](@ref) methods.
 """
 abstract type AbstractDataFormat end
 

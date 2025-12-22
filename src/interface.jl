@@ -4,14 +4,14 @@ Metrics are measures of a model's performance, such as loss, accuracy, or square
 Metrics are updated incrementally as new data arrives, making them suitable for online learning scenarios.
 
 Each metric must implement the following interface:
-- `name(m::AbstractMetric)`: Returns the human-readable name of the metric.
-- `initial_state(m::AbstractMetric)`: Returns the initial state of the metric.
-- `batch_state(m::AbstractMetric, ŷ, y)`: Computes the metric's state for a single batch of predictions and labels.
-- `merge_state(m::AbstractMetric, state1, state2)`: Merges two metric states into a single state.
-- `current_value(m::AbstractMetric, state)`: Computes the metric's value from its current state.
+- [`name`](@ref): Returns the human-readable name of the metric.
+- [`initial_state`](@ref): Returns the initial state of the metric.
+- [`batch_state`](@ref): Computes the metric's state for a single batch of predictions and labels.
+- [`merge_state`](@ref): Merges two metric states into a single state.
+- [`current_value`](@ref): Computes the metric's value from its current state.
 
 # Optional Methods
-- `data_format(m::AbstractMetric)`: Returns the data format expected by the metric, or `nothing` if no specific format is required. Defaults to `nothing`.
+- [`data_format`](@ref): Returns the data format expected by the metric, or `nothing` if no specific format is required. Defaults to `nothing`.
 """
 abstract type AbstractMetric end
 
@@ -94,7 +94,7 @@ function step(m::AbstractMetric, y_pred, y_true, oldstate)
 end
 
 """
-    merge(m::AbstractMetric, states...) -> merged_state
+    merge_state(m::AbstractMetric, states...) -> merged_state
 
 Merge multiple metric states into a single state.
 """
