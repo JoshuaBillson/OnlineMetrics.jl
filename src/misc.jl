@@ -27,4 +27,4 @@ function merge_state(::AverageMeasure, state1, state2)
     return (;n, avg)
 end
 
-current_value(::AverageMeasure, state) = state.avg
+metric_value(::AverageMeasure, state) = state.avg

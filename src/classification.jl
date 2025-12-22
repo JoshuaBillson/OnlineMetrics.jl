@@ -12,6 +12,9 @@ data_format(::ClassificationMetric{N}) where N = OneHot(N)
     Accuracy(nclasses::Int)
     
 Measures the model's overall accuracy as `correct / n`.
+
+# Parameters
+- `nclasses::Int`: The number of classes for the classification task.
 """
 struct Accuracy{N} <: ClassificationMetric{N}
     Accuracy(nclasses::Int) = new{nclasses}()
@@ -29,33 +32,57 @@ end
 
 merge_state(::Accuracy{N}, state1, state2) where N = (;correct=state1.correct + state2.correct, n=state1.n + state2.n)
 
-current_value(::Accuracy, state) = state.correct / max(state.n, 1)
+metric_value(::Accuracy, state) = state.correct / max(state.n, 1)
+
+"""
+    IoU(nclasses::Int; agg=nothing)
+
+Intersection over Union (IoU) is a measure of the overlap between a prediction and a label.
+
+# Parameters
+- `nclasses::Int`: The number of classes for the classification task.
+
+# Keyword Parameters
+- `agg`: Specifies the type of IoU aggregation to be computed. The possible values are:
+    - `:mean`: Calculates mean IoU (mIoU) by averaging the IoU across all classes.
+    - `nothing`: Calculates the per-class IoU, which is returned as a `Vector` with the same length as `classes`.
+"""
+struct IoU{N} <: ClassificationMetric{N}
+    agg::Symbol
+
+    function IoU(nclasses::Int; agg=nothing)
+        @argcheck agg in (nothing, :mean)
+        new{nclasses}(Symbol(agg))
+    end
+end
+
+name(x::IoU) = x.agg == :mean ? "mIoU" : "IoU"
+
+initial_state(::IoU{N}) where N = (;intersection=zeros(Int, N), union=zeros(Int, N))
+
+function batch_state(::IoU{N}, y_pred, y_true) where N
+    intersection = @pipe (y_pred .&& y_true) |> sum(_, dims=2) |> vec
+    union = @pipe (y_pred .|| y_true) |> sum(_, dims=2) |> vec
+    return (;intersection, union)
+end
+
+function merge_state(::IoU, state1, state2)
+    return (;intersection=state1.intersection .+ state2.intersection, union=state1.union .+ state2.union)
+end
+
+function metric_value(x::IoU{N}, state) where N
+    @match x.agg begin
+        :mean => sum((state.intersection .+ eps(Float64)) ./ (state.union .+ eps(Float64))) / N
+        :nothing => (state.intersection .+ eps(Float64)) ./ (state.union .+ eps(Float64))
+    end
+end
 
 """
     mIoU(nclasses::Int)
 
-Mean Intersection over Union (mIoU) is a measure of the overlap between a prediction and a label.
-This measure is frequently used for segmentation models.
+A convenience constructor for `IoU` that defaults to mean aggregation.
 """
-struct mIoU{N} <: ClassificationMetric{N}
-    mIoU(nclasses::Int) = new{nclasses}()
-end
-
-name(::mIoU) = "mIoU"
-
-initial_state(::mIoU{N}) where N = (;intersection=zeros(Int, N), union=zeros(Int, N))
-
-function batch_state(::mIoU{N}, y_pred, y_true) where N
-    intersection = @pipe y_pred .& y_true |> sum(_, dims=2) |> vec
-    union = @pipe y_pred .| y_true |> sum(_, dims=2) |> vec
-    return (;intersection, union)
-end
-
-function merge_state(::mIoU, state1, state2)
-    return (;intersection=state1.intersection .+ state2.intersection, union=state1.union .+ state2.union)
-end
-
-current_value(::mIoU{N}, state) where N = sum((state.intersection .+ eps(Float64)) ./ (state.union .+ eps(Float64))) / N
+mIoU(nclasses::Int) = IoU(nclasses; agg=:mean)
 
 """
     ConfusionMatrix(nclasses::Int)
@@ -63,7 +90,7 @@ current_value(::mIoU{N}, state) where N = sum((state.intersection .+ eps(Float64
 Calculate the confusion matrix over two or more classes. The columns of the resulting `nclasses x nclasses`
 matrix correspond to the true label while the rows correspond to the prediction.
 
-# Arguments
+# Parameters
 - `nclasses::Int`: The number of possible classes in the classification task.
 """
 struct ConfusionMatrix{N} <: ClassificationMetric{N}
@@ -78,17 +105,17 @@ batch_state(::ConfusionMatrix, y_pred, y_true) = (;confusion=_confusion_matrix(y
 
 merge_state(::ConfusionMatrix, state1, state2) = (;confusion=state1.confusion .+ state2.confusion)
 
-current_value(::ConfusionMatrix, state) = state.confusion
+metric_value(::ConfusionMatrix, state) = state.confusion
 
 """
     Precision(nclasses::Int; agg=:macro)
 
 Precision is the ratio of true positives to the sum of true positives and false positives, measuring the accuracy of positive predictions.
 
-# Arguments
+# Parameters
 - `nclasses::Int`: The number of classes for the classification task.
 
-# Keyword Arguments
+# Keyword Parameters
 - `agg`: Specifies the type of precision aggregation to be computed. The possible values are:
     - `:macro`: Calculates macro-averaged precision, which computes the precision for each class independently and then takes the average.
     - `:micro`: Calculates micro-averaged precision, which aggregates the contributions of all classes to compute a single precision value.
@@ -121,14 +148,7 @@ end
 
 merge_state(::Precision, state1, state2) = (;tp=state1.tp .+ state2.tp, fp=state1.fp .+ state2.fp)
 
-function current_value(x::Precision, state)
-    ϵ = eps(Float64)
-    return @match x.agg begin
-        :macro => mean((state.tp .+ ϵ) ./ (state.tp .+ state.fp .+ ϵ))
-        :micro => mean(state.tp .+ ϵ) / (mean(state.tp) + mean(state.fp) + ϵ)
-        :nothing => (state.tp .+ ϵ) ./ (state.tp .+ state.fp .+ ϵ)
-    end
-end
+metric_value(x::Precision, state) = _precision(state.tp, state.fp; agg=x.agg)
 
 """
     BinaryPrecision()
@@ -148,21 +168,21 @@ end
 
 merge_state(::BinaryPrecision, state1, state2) = (;tp=state1.tp + state2.tp, fp=state1.fp + state2.fp)
 
-current_value(::BinaryPrecision, state) = (state.tp + eps(Float64)) / (state.tp + state.fp + eps(Float64))
+metric_value(::BinaryPrecision, state) = (state.tp + eps(Float64)) / (state.tp + state.fp + eps(Float64))
 
 """
     Recall(nclasses::Int; agg=:macro)
 
 Recall, also known as sensitivity or true positive rate, is the ratio of true positives to the sum of true positives and false negatives, measuring the ability of the classifier to identify all positive instances.
 
-# Arguments
+# Parameters
 - `nclasses::Int`: The number of classes for the classification task.
 
-# Keyword Arguments
+# Keyword Parameters
 - `agg`: Specifies the type of recall aggregation to be computed. The possible values are:
-- `:macro`: Calculates macro-averaged recall, which computes the recall for each class independently and then takes the average.
-- `:micro`: Calculates micro-averaged recall, which aggregates the contributions of all classes to compute a single recall value.
-- `:nothing`: Calculates the per-class recall, which is returned as a `Vector` with the same length as `classes`.
+    - `:macro`: Calculates macro-averaged recall, which computes the recall for each class independently and then takes the average.
+    - `:micro`: Calculates micro-averaged recall, which aggregates the contributions of all classes to compute a single recall value.
+    - `:nothing`: Calculates the per-class recall, which is returned as a `Vector` with the same length as `classes`.
 """
 struct Recall{N} <: ClassificationMetric{N}
     agg::Symbol
@@ -191,14 +211,7 @@ end
 
 merge_state(::Recall, state1, state2) = (;tp=state1.tp .+ state2.tp, fn=state1.fn .+ state2.fn)
 
-function current_value(x::Recall, state)
-    ϵ = eps(Float64)
-    return @match x.agg begin
-        :macro => mean((state.tp .+ ϵ) ./ (state.tp .+ state.fn .+ ϵ))
-        :micro => mean(state.tp .+ ϵ) / (mean(state.tp) + mean(state.fn) + ϵ)
-        :nothing => (state.tp .+ ϵ) ./ (state.tp .+ state.fn .+ ϵ)
-    end
-end
+metric_value(x::Recall, state) = _recall(state.tp, state.fn; agg=x.agg)
 
 """
     BinaryRecall()
@@ -218,4 +231,53 @@ end
 
 merge_state(::BinaryRecall, state1, state2) = (;tp=state1.tp + state2.tp, fn=state1.fn + state2.fn)
 
-current_value(::BinaryRecall, state) = (state.tp + eps(Float64)) / (state.tp + state.fn + eps(Float64))
+metric_value(::BinaryRecall, state) = (state.tp + eps(Float64)) / (state.tp + state.fn + eps(Float64))
+
+"""
+    F1Score(nclasses::Int; agg=:macro)
+
+F1 Score is the harmonic mean of precision and recall, providing a single metric that balances both concerns.
+
+# Parameters
+- `nclasses::Int`: The number of classes for the classification task.
+
+# Keyword Parameters
+- `agg`: Specifies the type of F1 score aggregation to be computed. The possible values are:
+    - `:macro`: Calculates macro-averaged F1 score, which computes the F1 score for each class independently and then takes the average.
+    - `:micro`: Calculates micro-averaged F1 score, which aggregates the contributions of all classes to compute a single F1 score.
+    - `nothing`: Calculates the per-class F1 score, which is returned as a `Vector` with the same length as `classes`.
+"""
+struct F1Score{N} <: ClassificationMetric{N}
+    agg::Symbol
+
+    function F1Score(nclasses::Int; agg=:macro)
+        @argcheck nclasses > 0
+        @argcheck agg in (:macro, :micro, nothing)
+        new{nclasses}(Symbol(agg))
+    end
+end
+
+function name(m::F1Score)
+    @match m.agg begin
+        :macro => "macro_f1_score"
+        :micro => "micro_f1_score"
+        :nothing => "per_class_f1_score"
+    end
+end
+
+initial_state(::F1Score{N}) where N = (;tp=zeros(Int, N), fp=zeros(Int, N), fn=zeros(Int, N))
+
+function batch_state(::F1Score{N}, y_pred, y_true) where N
+    TP, _, FP, FN = _tfpn(y_pred, y_true)
+    return (;tp=TP, fp=FP, fn=FN)
+end
+
+function merge_state(::F1Score, state1, state2)
+    return (;tp=state1.tp .+ state2.tp, fp=state1.fp .+ state2.fp, fn=state1.fn .+ state2.fn)
+end
+
+function metric_value(x::F1Score, state)
+    precision = _precision(state.tp, state.fp; x.agg)
+    recall = _recall(state.tp, state.fn; x.agg)
+    return (2 .* precision .* recall) ./ (precision .+ recall)
+end

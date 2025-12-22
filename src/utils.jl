@@ -18,3 +18,19 @@ function _tfpn(confusion_matrix::AbstractMatrix)
     end
     return TP, TN, FP, FN
 end
+
+function _precision(tp::AbstractVector{<:Integer}, fp::AbstractVector{<:Integer}; ϵ=eps(Float64), agg=:macro)
+    @match agg begin
+        :macro => mean((tp .+ ϵ) ./ (tp .+ fp .+ ϵ))
+        :micro => mean(tp .+ ϵ) / (mean(tp) + mean(fp) + ϵ)
+        :nothing => (tp .+ ϵ) ./ (tp .+ fp .+ ϵ)
+    end
+end
+
+function _recall(tp::AbstractVector{<:Integer}, fn::AbstractVector{<:Integer}; ϵ=eps(Float64), agg=:macro)
+    @match agg begin
+        :macro => mean((tp .+ ϵ) ./ (tp .+ fn .+ ϵ))
+        :micro => mean(tp .+ ϵ) / (mean(tp) + mean(fn) + ϵ)
+        :nothing => (tp .+ ϵ) ./ (tp .+ fn .+ ϵ)
+    end
+end

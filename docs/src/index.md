@@ -25,7 +25,7 @@ name
 initial_state
 batch_state
 merge_state
-current_value
+metric_value
 data_format
 step
 ```
@@ -34,11 +34,13 @@ step
 
 ```@docs
 Accuracy
+IoU
 mIoU
 Precision
 BinaryPrecision
 Recall
 BinaryRecall
+F1Score
 ConfusionMatrix
 ```
 

@@ -8,7 +8,7 @@ function generate_batches(x::AbstractArray{<:Any,N}) where N
     return [selectdim(x, N, i:i) for i in 1:obs]
 end
 
-function onehot_labels(x::AbstractVector{Int}, nclasses::Int)
+function onehot_labels(x::AbstractVector{<:Integer}, nclasses::Int)
     dst = zeros(Bool, nclasses, length(x))
     for i in eachindex(x)
         dst[x[i]+1, i] = true
@@ -16,7 +16,7 @@ function onehot_labels(x::AbstractVector{Int}, nclasses::Int)
     return dst
 end
 
-function softmax_labels(x::AbstractVector{Int}, nclasses::Int, smoothing::Float64=0.1)
+function softmax_labels(x::AbstractVector{<:Integer}, nclasses::Int, smoothing::Float64=0.1)
     hard_labels = onehot_labels(x, nclasses) .|> Float64
     smooth_labels = ((1 - smoothing) .* hard_labels) .+ (smoothing / nclasses)
     return smooth_labels
@@ -35,25 +35,25 @@ function evaluate_metric(metric::AbstractMetric, y_pred::Vector{Int}, y_true::Ve
 end
 
 @testset "data format" begin
-    # weighted_average
-    #@test weighted_average([0.5, 0.5], 0.5, 2) ≈ 0.5
-    #@test weighted_average([1.0, 1.0], 0.0, 2) ≈ 0.5
-    #@test weighted_average([0.0, 0.0], 1.0, 2) ≈ 0.5
-    #@test weighted_average([0.2, 0.4, 0.6], 0.5, 4) ≈ (0.5 * (4/7)) + (mean([0.2,0.4,0.6]) * (3/7))
-
-    # one_hot
+    # One Hot
     df = OneHot(2)
     @test format(df, [0,1,0,1]) == [1 0 1 0; 0 1 0 1]
     @test format(df, [0.0,1.0,0.0,1.0]) == [1 0 1 0; 0 1 0 1]
     @test format(df, [0.9 0.25 0.56 0.1; 0.15 0.99 0.01 0.51]) == [1 0 1 0; 0 1 0 1]
 end
 
-@testset "classification metrics" begin
-    #y_pred = [0.1, 0.8, 0.51, 0.49]
-    #y_correct = [0.05, 0.95, 0.95, 0.05]
-    #y_incorrect = [0.95, 0.05, 0.05, 0.95]
-    #y_mixed = [0.05, 0.05, 0.95, 0.95]
+@testset "utils" begin
+    # TPFN 
+    y_pred = onehot_labels(rand(Bool, 1000), 2)
+    y_true = onehot_labels(rand(Bool, 1000), 2)
+    TP, TN, FP, FN = OnlineMetrics._tfpn(y_pred, y_true)
+    @test sum(y_pred .&& y_true, dims=2)[:] == TP
+    @test sum(.!y_pred .&& .!y_true, dims=2)[:] == TN
+    @test sum(y_pred .&& .!y_true, dims=2)[:] == FP
+    @test sum(.!y_pred .&& y_true, dims=2)[:] == FN
+end
 
+@testset "classification metrics" begin
     # Accuracy
     evaluate_metric(Accuracy(2), [0, 1, 1, 0], [0, 1, 1, 0], 2, 1)  # all correct
     evaluate_metric(Accuracy(2), [0, 1, 1, 0], [1, 0, 0, 1], 2, 0)  # all incorrect

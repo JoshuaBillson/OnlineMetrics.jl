@@ -8,7 +8,7 @@ Each metric must implement the following interface:
 - [`initial_state`](@ref): Returns the initial state of the metric.
 - [`batch_state`](@ref): Computes the metric's state for a single batch of predictions and labels.
 - [`merge_state`](@ref): Merges two metric states into a single state.
-- [`current_value`](@ref): Computes the metric's value from its current state.
+- [`metric_value`](@ref): Computes the metric's value from its current state.
 
 # Optional Methods
 - [`data_format`](@ref): Returns the data format expected by the metric, or `nothing` if no specific format is required. Defaults to `nothing`.
@@ -49,11 +49,11 @@ Merge two metric states into a single state.
 function merge_state end
 
 """
-    current_value(m::AbstractMetric, state)
+    metric_value(m::AbstractMetric, state)
 
 Compute the metric's value from its current state.
 """
-function current_value end
+function metric_value end
 
 """
     data_format(m::AbstractMetric) -> Union{AbstractDataFormat, Nothing}

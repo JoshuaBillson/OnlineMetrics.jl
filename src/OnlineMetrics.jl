@@ -12,10 +12,10 @@ include("format.jl")
 export AbstractDataFormat, OneHot, format, validate
 
 include("interface.jl")
-export AbstractMetric, name, initial_state, merge_state, batch_state, current_value, data_format, step
+export AbstractMetric, name, initial_state, merge_state, batch_state, metric_value, data_format, step
 
 include("classification.jl")
-export ClassificationMetric, Accuracy, mIoU, ConfusionMatrix, BinaryPrecision, Precision, BinaryRecall, Recall
+export ClassificationMetric, Accuracy, IoU, mIoU, ConfusionMatrix, BinaryPrecision, Precision, BinaryRecall, Recall, F1Score
 
 include("misc.jl")
 export AverageMeasure

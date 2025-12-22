@@ -56,7 +56,7 @@ function step!(x::Metric, y_pred, y_true)
     return x
 end
 
-value(x::Metric) = current_value(x.metric, x.state)
+value(x::Metric) = metric_value(x.metric, x.state)
 
 function merge(xs::Vararg{M}) where M<:Metric
     @argcheck length(xs) > 0 "At least one Metric must be provided to merge."

@@ -16,7 +16,7 @@
 - Small, explicit API surface for easy extension.
 
 ## Design philosophy
-- **Minimal, explicit interface:** Implement `AbstractMetric` and the handful of required functions (`name`, `initial_state`, `batch_state`, `merge_state`, `current_value`) to add a new metric.
+- **Minimal, explicit interface:** Implement `AbstractMetric` and the handful of required functions (`name`, `initial_state`, `batch_state`, `merge_state`, `metric_value`) to add a new metric.
 - **Robust input handling:** Metrics declare or accept data formats; validation and formatting are separated from core metric logic.
 - **Usability:** Friendly `Base.show` representations and `MetricCollection` tree-printing for quick inspection.
 
